@@ -6,11 +6,9 @@
 
 VERSION="1.1.0"
 N_PREFIX=${N_PREFIX-/usr/local}
+LN_BIN_PATH=$N_PREFIX/bin/node
+LN_MOD_PATH=$N_PREFIX/lib/node_modules
 VERSIONS_DIR=$N_PREFIX/n/versions
-UP=$'\033[A'
-DOWN=$'\033[B'
-
-test -d $VERSIONS_DIR || mkdir -p $VERSIONS_DIR
 
 #
 # Log <type> <msg>
@@ -28,6 +26,13 @@ abort() {
   printf "\n  \033[31mError: $@\033[0m\n\n" && exit 1
 }
 
+
+#
+# Ensure we version dir
+#
+
+test -d $VERSIONS_DIR || abort "$VERSIONS_DIR doesn't exist"
+
 #
 # Ensure we have curl or wget support.
 #
@@ -36,7 +41,6 @@ GET=
 
 # wget support (Added --no-check-certificate for Github downloads)
 command -v wget > /dev/null && GET="wget --no-check-certificate -q -O-"
-
 command -v curl > /dev/null && GET="curl -# -L"
 
 test -z "$GET" && abort "curl or wget required"
@@ -78,22 +82,6 @@ display_help() {
 
 EOF
   exit 0
-}
-
-#
-# Hide cursor.
-#
-
-hide_cursor() {
-  printf "\e[?25l"
-}
-
-#
-# Show cursor.
-#
-
-show_cursor() {
-  printf "\e[?25h"
 }
 
 #
@@ -152,9 +140,9 @@ display_versions_with_selected() {
   for dir in `versions_paths`; do
     local version=${dir##*/}
     if test "$version" = "$selected"; then
-      printf "  \033[36mο\033[0m $version\033[0m\n"
+      printf "  > $version\n"
     else
-      printf "    \033[90m$version\033[0m\n"
+      printf "    $version\n"
     fi
   done
   echo
@@ -176,28 +164,10 @@ list_versions_installed() {
 #
 
 display_versions() {
-  clear
+#  clear
   check_current_version
   display_versions_with_selected $active
-
-  while true; do
-    read -s -n 3 c
-    case "$c" in
-      $UP)
-        clear
-        display_versions_with_selected $(prev_version_installed)
-        ;;
-      $DOWN)
-        clear
-        display_versions_with_selected $(next_version_installed)
-        ;;
-      *)
-        clear
-        activate $selected
-        exit
-        ;;
-    esac
-  done
+  exit
 }
 
 #
@@ -251,7 +221,14 @@ activate() {
   if test "$version" != "$active"; then
     local dir=$VERSIONS_DIR/$version
     echo $active > $VERSIONS_DIR/.prev
-    cp -fR $dir/* $N_PREFIX
+
+    rm -f $LN_BIN_PATH
+    ln -s $dir/bin/node $LN_BIN_PATH
+#   echo "ln -s $dir/bin/node $LN_BIN_PATH"
+
+    rm -f $LN_MOD_PATH
+    ln -s $dir/lib/node_modules $LN_MOD_PATH
+#   echo "ln -s $dir/lib/node_modules $LN_MOD_PATH"
   fi
 }
 
