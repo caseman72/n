@@ -6,7 +6,7 @@
 
 VERSION="1.1.0"
 N_PREFIX=${N_PREFIX-/usr/local}
-LN_BIN_PATH=$N_PREFIX/bin/node
+LN_BIN_PATH=$N_PREFIX/bin
 LN_MOD_PATH=$N_PREFIX/lib/node_modules
 VERSIONS_DIR=$N_PREFIX/n/versions
 
@@ -223,8 +223,8 @@ activate() {
     echo $active > $VERSIONS_DIR/.prev
 
     rm -f $LN_BIN_PATH
-    ln -s $dir/bin/node $LN_BIN_PATH
-#   echo "ln -s $dir/bin/node $LN_BIN_PATH"
+    ln -s $dir/bin $LN_BIN_PATH
+#   echo "ln -s $dir/bin $LN_BIN_PATH"
 
     rm -f $LN_MOD_PATH
     ln -s $dir/lib/node_modules $LN_MOD_PATH
@@ -284,7 +284,7 @@ install_node() {
   if [ $? -ne 0 ] ; then
     abort "sudo required"
   fi
-  
+
   cd $dir
 
   log fetch $url
