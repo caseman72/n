@@ -61,7 +61,7 @@ function n_grep() {
 # Setup and state
 #
 
-VERSION="10.2.0"
+VERSION="10.2.0-symlink"
 
 N_PREFIX="${N_PREFIX-/usr/local}"
 N_PREFIX=${N_PREFIX%/}
@@ -71,6 +71,13 @@ N_CACHE_PREFIX="${N_CACHE_PREFIX-${N_PREFIX}}"
 N_CACHE_PREFIX=${N_CACHE_PREFIX%/}
 CACHE_DIR="${N_CACHE_PREFIX}/n/versions"
 readonly N_CACHE_PREFIX CACHE_DIR
+
+# Symlink paths for activation
+LN_BIN_PATH="${N_PREFIX}/bin"
+LN_LIB_PATH="${N_PREFIX}/lib"
+LN_INCLUDE_PATH="${N_PREFIX}/include"
+LN_SHARE_PATH="${N_PREFIX}/share"
+readonly LN_BIN_PATH LN_LIB_PATH LN_INCLUDE_PATH LN_SHARE_PATH
 
 N_NODE_MIRROR=${N_NODE_MIRROR:-${NODE_MIRROR:-https://nodejs.org/dist}}
 N_NODE_MIRROR=${N_NODE_MIRROR%/}
@@ -133,7 +140,6 @@ g_active_node=
 g_target_node=
 
 DOWNLOAD=false # set to opt-out of activate (install), and opt-in to download (run, exec)
-CLEANUP=false # remove cached download after install
 ARCH="${N_ARCH-}"
 SHOW_VERBOSE_LOG="true"
 OFFLINE=false
@@ -396,10 +402,8 @@ Options:
 
   -V, --version         Output version of n
   -h, --help            Display help information
-  -p, --preserve        Preserve npm and npx during install of Node.js
   -q, --quiet           Disable curl output. Disable log messages processing "auto" and "engine" labels.
   -d, --download        Download if necessary. Used with run/exec/which.
-  --cleanup             Remove cached version after install
   -a, --arch            Override system architecture
   --offline             Resolve target version against cached downloads instead of internet lookup
   --all                 ls-remote displays all matches instead of last 20
@@ -660,19 +664,6 @@ disable_pax_mprotect() {
 }
 
 #
-# clean_copy_folder <source> <target>
-#
-
-clean_copy_folder() {
-  local source="$1"
-  local target="$2"
-  if [[ -d "${source}" ]]; then
-    rm -rf "${target}"
-    cp -fR "${source}" "${target}"
-  fi
-}
-
-#
 # Activate <version>
 #
 
@@ -680,60 +671,22 @@ activate() {
   local version="$1"
   local dir="$CACHE_DIR/$version"
   local original_node="$(command -v node)"
-  local installed_node="${N_PREFIX}/bin/node"
-  log "copying" "$version"
+  local installed_node="${LN_BIN_PATH}/node"
+  log "activating" "$version"
 
+  # Remove existing symlinks/directories and create new symlinks pointing to cached version
+  # Use rm -rf to handle both symlinks and directories (from previous copy-based installs)
+  rm -rf "$LN_BIN_PATH"
+  ln -s "$dir/bin" "$LN_BIN_PATH"
 
-  # Ideally we would just copy from cache to N_PREFIX, but there are some complications
-  # - various linux versions use symlinks for folders in /usr/local and also error when copy folder onto symlink
-  # - we have used cp for years, so keep using it for backwards compatibility (instead of say rsync)
-  # - we allow preserving npm
-  # - we want to be somewhat robust to changes in tarball contents, so use find instead of hard-code expected subfolders
-  #
-  # This code was purist and concise for a long time.
-  # Now twice as much code, but using same code path for all uses, and supporting more setups.
+  rm -rf "$LN_LIB_PATH"
+  ln -s "$dir/lib" "$LN_LIB_PATH"
 
-  # Copy lib before bin so symlink targets exist.
-  # lib
-  mkdir -p "$N_PREFIX/lib"
-  # Copy everything except node_modules.
-  find "$dir/lib" -mindepth 1 -maxdepth 1 \! -name node_modules -exec cp -fR "{}" "$N_PREFIX/lib" \;
-  if [[ -z "${N_PRESERVE_NPM}" ]]; then
-    mkdir -p "$N_PREFIX/lib/node_modules"
-    # Copy just npm, skipping possible added global modules after download. Clean copy to avoid version change problems.
-    clean_copy_folder "$dir/lib/node_modules/npm" "$N_PREFIX/lib/node_modules/npm"
-  fi
-  # Takes same steps for corepack (experimental in node 16.9.0) as for npm, to avoid version problems.
-  if [[ -e "$dir/lib/node_modules/corepack" && -z "${N_PRESERVE_COREPACK}" ]]; then
-    mkdir -p "$N_PREFIX/lib/node_modules"
-    clean_copy_folder "$dir/lib/node_modules/corepack" "$N_PREFIX/lib/node_modules/corepack"
-  fi
+  rm -rf "$LN_INCLUDE_PATH"
+  ln -s "$dir/include" "$LN_INCLUDE_PATH"
 
-  # bin
-  mkdir -p "$N_PREFIX/bin"
-  # Remove old node to avoid potential problems with firewall getting confused on Darwin by overwrite.
-  rm -f "$N_PREFIX/bin/node"
-  # Copy bin items by hand, in case user has installed global npm modules into cache.
-  cp -f "$dir/bin/node" "$N_PREFIX/bin"
-  [[ -e "$dir/bin/node-waf" ]] && cp -f "$dir/bin/node-waf" "$N_PREFIX/bin" # v0.8.x
-  if [[ -z "${N_PRESERVE_COREPACK}" ]]; then
-    [[ -e "$dir/bin/corepack" ]] && cp -fR "$dir/bin/corepack" "$N_PREFIX/bin" # from 16.9.0
-  fi
-  if [[ -z "${N_PRESERVE_NPM}" ]]; then
-    [[ -e "$dir/bin/npm" ]] && cp -fR "$dir/bin/npm" "$N_PREFIX/bin"
-    [[ -e "$dir/bin/npx" ]] && cp -fR "$dir/bin/npx" "$N_PREFIX/bin"
-  fi
-
-  # include
-  mkdir -p "$N_PREFIX/include"
-  find "$dir/include" -mindepth 1 -maxdepth 1 -exec cp -fR "{}" "$N_PREFIX/include" \;
-
-  # share
-  mkdir -p "$N_PREFIX/share"
-  # Copy everything except man, at it is a symlink on some Linux (e.g. archlinux).
-  find "$dir/share" -mindepth 1 -maxdepth 1 \! -name man -exec cp -fR "{}" "$N_PREFIX/share" \;
-  mkdir -p "$N_PREFIX/share/man"
-  find "$dir/share/man" -mindepth 1 -maxdepth 1 -exec cp -fR "{}" "$N_PREFIX/share/man" \;
+  rm -rf "$LN_SHARE_PATH"
+  ln -s "$dir/share" "$LN_SHARE_PATH"
 
   disable_pax_mprotect "${installed_node}"
 
@@ -744,9 +697,9 @@ activate() {
     log "active" "$("${active_node}" --version) at ${active_node}"
   else
     local npm_version_str=""
-    local installed_npm="${N_PREFIX}/bin/npm"
+    local installed_npm="${LN_BIN_PATH}/npm"
     local active_npm="$(command -v npm)"
-    if [[ -z "${N_PRESERVE_NPM}" && -e "${active_npm}" && -e "${installed_npm}" && "${active_npm}" = "${installed_npm}" ]]; then
+    if [[ -e "${active_npm}" && -e "${installed_npm}" && "${active_npm}" = "${installed_npm}" ]]; then
       npm_version_str=" (with npm $(npm --version))"
     fi
 
@@ -760,12 +713,6 @@ activate() {
       printf 'If "node --version" shows the old version then start a new shell, or reset the location hash with:\nhash -r  (for bash, zsh, ash, dash, and ksh)\nrehash   (for csh and tcsh)\n'
     fi
   fi
-
-  if [[ "$CLEANUP" == "true" ]]; then
-    log "cleanup" "removing cached $version"
-    remove_versions "$version"
-  fi
-
 }
 
 #
@@ -1526,8 +1473,6 @@ function show_diagnostics() {
   [[ -n "${N_PREFIX}" ]] && echo "PATH: ${PATH}"
   [[ -n "$N_ARCH" ]] && echo "default arch: $N_ARCH"
   echo "ls-remote max matches: ${N_MAX_REMOTE_MATCHES}"
-   [[ -n "${N_PRESERVE_NPM}" ]] && echo "installs preserve npm by default"
-   [[ -n "${N_PRESERVE_COREPACK}" ]] && echo "installs preserve corepack by default"
 
   printf "\nProxy\n"
   # disable "var is referenced but not assigned": https://github.com/koalaman/shellcheck/wiki/SC2154
@@ -1588,17 +1533,15 @@ function show_diagnostics() {
   fi
 
   # Check npm too. Simpler check than for PATH and node, more like the runtime logging for active/installed node.
-  if [[ -z "${N_PRESERVE_NPM}" ]]; then
-    printf "\nChecking npm install destination...\n"
-    local installed_npm="${N_PREFIX}/bin/npm"
-    local active_npm="$(command -v npm)"
-    if [[ -e "${active_npm}" && -e "${installed_npm}" && "${active_npm}" != "${installed_npm}" ]]; then
-      echo_red "There is an active version of npm shadowing the version installed by n. Check order of entries in PATH."
-      log "installed" "${installed_npm}"
-      log "active" "${active_npm}"
-    else
-      printf "good\n"
-    fi
+  printf "\nChecking npm install destination...\n"
+  local installed_npm="${N_PREFIX}/bin/npm"
+  local active_npm="$(command -v npm)"
+  if [[ -e "${active_npm}" && -e "${installed_npm}" && "${active_npm}" != "${installed_npm}" ]]; then
+    echo_red "There is an active version of npm shadowing the version installed by n. Check order of entries in PATH."
+    log "installed" "${installed_npm}"
+    log "active" "${active_npm}"
+  else
+    printf "good\n"
   fi
 
   printf "\nChecking prefix folders...\n"
@@ -1695,11 +1638,8 @@ while [[ $# -ne 0 ]]; do
     -h|--help|help) display_help; exit ;;
     -q|--quiet) set_quiet ;;
     -d|--download) DOWNLOAD="true" ;;
-    --cleanup) CLEANUP="true" ;;
     --offline) OFFLINE="true" ;;
     --insecure) set_insecure ;;
-    -p|--preserve) N_PRESERVE_NPM="true" N_PRESERVE_COREPACK="true" ;;
-    --no-preserve) N_PRESERVE_NPM="" N_PRESERVE_COREPACK="" ;;
     --use-xz) N_USE_XZ="true" ;;
     --no-use-xz) N_USE_XZ="false" ;;
     --latest) display_remote_versions latest; exit ;;
