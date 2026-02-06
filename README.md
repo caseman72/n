@@ -18,7 +18,6 @@ Node.js version management: no subshells, no profile setup, no convoluted API, j
     - [Specifying Node.js Versions](#specifying-nodejs-versions)
     - [Removing Versions](#removing-versions)
     - [Using Downloaded Node.js Versions Without Reinstalling](#using-downloaded-nodejs-versions-without-reinstalling)
-    - [Preserving npm](#preserving-npm)
     - [Miscellaneous](#miscellaneous)
     - [Custom Mirror](#custom-mirror)
     - [Custom Architecture](#custom-architecture)
@@ -96,7 +95,7 @@ You have a problem with multiple versions if after installing node you see the "
 
 ```console
 % n lts
-     copying : node/20.12.2
+  activating : node/20.12.2
    installed : v20.12.2 to /usr/local/bin/node
       active : v21.7.3 at /opt/homebrew/bin/node
 ```
@@ -195,30 +194,6 @@ Or execute a command with `PATH` modified so `node` and `npm` will be from the d
     n exec 10 my-script --fast test
     n exec lts zsh
 
-## Preserving npm
-
-A Node.js install normally also includes `npm`,  `npx`, and `corepack`, but you may wish to preserve your current (especially newer) versions using `--preserve`:
-
-    $ npm install -g npm@latest
-    ...
-    $ npm --version
-    6.13.7
-    # Node.js 8.17.0 includes (older) npm 6.13.4
-    $ n -p 8
-       installed : v8.17.0
-    $ npm --version
-    6.13.7
-
-You can make this the default by setting the environment variable to a non-empty string. There are separate environment variables for `npm` and `corepack`:
-
-    export N_PRESERVE_NPM=1
-    export N_PRESERVE_COREPACK=1
-
-You can be explicit to get the desired behaviour whatever the environment variables:
-
-    n --preserve nightly
-    n --no-preserve latest
-
 ## Miscellaneous
 
 Command line help can be obtained from `n --help`.
@@ -241,10 +216,6 @@ Download version into cache:
 Use `n` to access cached versions (already downloaded) without internet available.
 
     n --offline 12
-
-Remove the cache version after installing using `--cleanup`. This is particularly useful for a one-shot install, like in a docker container.
-
-    curl -fsSL https://raw.githubusercontent.com/tj/n/master/bin/n | bash -s install --cleanup lts
 
 Normally `n run`, `n exec`, and `n which` will fail if the target version is not already in the cache. You can add `--download` to use the cache if available or download if required:
 
@@ -323,15 +294,13 @@ In brief:
 - `N_NODE_DOWNLOAD_MIRROR`: see [Custom Mirror](#custom-mirror)
 - support for [NO_COLOR](https://no-color.org) and [CLICOLOR=0](https://bixense.com/clicolors) for controlling use of ANSI color codes
 - `N_MAX_REMOTE_MATCHES` to change the default `ls-remote` maximum of 20 matching versions
-- `N_PRESERVE_NPM`: see [Preserving npm](#preserving-npm)
-- `N_PRESERVE_COREPACK`: see [Preserving npm](#preserving-npm)
 - `N_ARCH`: see [Custom Architecture](#custom-architecture)
 
 ## How It Works
 
-`n` downloads a prebuilt Node.js package and installs to a single prefix (e.g. `/usr/local`). This overwrites the previous version. The `bin` folder in this location should be in your `PATH` (e.g. `/usr/local/bin`).
+`n` downloads a prebuilt Node.js package to a cache folder and symlinks the prefix directories (`bin`, `lib`, `include`, `share`) to the cached version. The `bin` folder in the prefix location should be in your `PATH` (e.g. `/usr/local/bin`).
 
-The downloads are kept in a cache folder to be used for reinstalls. The downloads are also available for limited use using `n which` and `n run` and `n exec`.
+The downloads are kept in the cache folder and serve as the active install via symlinks. They are also available for limited use using `n which` and `n run` and `n exec`.
 
 The global `npm` packages are not changed by the install, with the
 exception of `npm` itself which is part of the Node.js install.
